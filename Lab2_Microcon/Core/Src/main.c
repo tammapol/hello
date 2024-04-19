@@ -49,19 +49,19 @@ UART_HandleTypeDef hlpuart1;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN PV */
 
 uint8_t data_packet[4] = {0x45, 0,0, 0x0A};
-int8_t Rx[20];
+int8_t Rx[4];
 int16_t c = 0;
-uint8_t Tx[20];
 
-int check = 0;
+int check = 1;
 uint32_t QEIReadRaw;
 float Radiant;
 float Radiant2;
-uint16_t ADC_RawRead[3]={0};
+uint16_t ADC_RawRead[3];
 arm_pid_instance_f32 PID = {0};
 float position =0;
 float setposition =0;
@@ -88,6 +88,7 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM8_Init(void);
 /* USER CODE BEGIN PFP */
 void NO1();
 void NO2();
@@ -135,6 +136,7 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM4_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_ALL);
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
@@ -146,14 +148,15 @@ int main(void)
 
   // motor
   PID.Kp = 15;
-  PID.Ki = 0.0004;
-  PID.Kd = 4;
+  PID.Ki = 0.0002;
+  PID.Kd = 3;
 
   arm_pid_init_f32(&PID, 0);
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_Base_Start(&htim4);
+  HAL_TIM_Base_Start(&htim8);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
 
   /* USER CODE END 2 */
@@ -179,14 +182,15 @@ int main(void)
 		  {
 			  timestamp = HAL_GetTick()+1;
 			  Vfeedback2 = arm_pid_f32(&PID, setposition2 - position2);
-			  if (Vfeedback2 > 9999)
+			  if (Vfeedback2 > 32676)
 			  {
-				  Vfeedback2 = 9999;
+				  Vfeedback2 = 32676;
 			  }
-			  if (Vfeedback2 < -9999)
+			  if (Vfeedback2 < -32676)
 			  {
-				  Vfeedback2 = -9999;
+				  Vfeedback2 = -32676;
 			  }
+
 //			  if (Vfeedback2 > 0 && Vfeedback2 < 1000)
 //			  {
 //				  Vfeedback2 = 1000;
@@ -218,6 +222,10 @@ int main(void)
 			  if (Diff2 < 0)
 			  {
 				  G = 1;
+				  if ((setposition2 - position2) > -0.11)
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+				  }
 				  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_SET);
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,GPIO_PIN_RESET);
 				  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, -Vfeedback2);
@@ -225,6 +233,10 @@ int main(void)
 			  else if (Diff2 > 0)
 			  {
 				  G = 2;
+				  if ((setposition2 - position2) < 0.11)
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+				  }
 				  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8,GPIO_PIN_RESET);
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,GPIO_PIN_SET);
 				  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, Vfeedback2);
@@ -308,7 +320,7 @@ int main(void)
 //			HAL_UART_Transmit(&hlpuart1, &data_packet[i], 1, 5);
 //		  }
 
-		  HAL_UART_Receive(&hlpuart1, Rx, 10, 5);
+		  HAL_UART_Receive(&hlpuart1, Rx, 4, 5);
 
 		  c = (uint16_t)(Rx[2]<< 8) + (uint8_t)(Rx[1]);
 
@@ -434,8 +446,8 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.NbrOfConversion = 3;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T8_TRGO;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
   hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.OversamplingMode = DISABLE;
@@ -730,6 +742,53 @@ static void MX_TIM4_Init(void)
 }
 
 /**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 169;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 999;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -834,11 +893,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if (GPIO_Pin == GPIO_PIN_13)
 	{
-		if (check == 0)
-		{
-			check = 1;
-		}
-		else if (check == 1)
+//		if (check == 0)
+//		{
+//			check = 1;
+//		}
+		if (check == 1)
 		{
 			check = 2;
 		}
